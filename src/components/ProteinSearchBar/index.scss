@@ -5,10 +5,30 @@
     width: 15vw;
 }
 
+// MUI's outlined input and contained button render at these heights; the
+// difference is what the button has to rise by to centre against the input.
+$input-height: 56px;
+$button-height: 36px;
+
+// Input (with its label stacked above) on the left, Search button inline on the
+// right. Bottom-aligned so the button tracks the input box rather than the
+// taller label+input column.
+.search-form-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: center;
+}
+
 .search-form {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.search-form__button {
+  margin-left: 0.3rem;
+  margin-bottom: ($input-height - $button-height) / 2;
 }
 
 .search-form__label {

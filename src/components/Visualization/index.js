@@ -143,6 +143,9 @@ function Visualization(props) {
   const GLYCO_STEM_LENGTH = 60;
   const GLYCO_LINK_LENGTH = 10;
   const SPINE_START_POS = 30;
+  // Clear space between each terminus label and the end of the backbone bar.
+  // Shared by both terminus labels so the two ends stay symmetric.
+  const TERMINUS_LABEL_GAP = 5;
 
   const PROTEIN_WINDOW_CARD_CLEARANCE = -148;
 
@@ -1224,16 +1227,24 @@ function Visualization(props) {
 
   const attachNTerminus = (g) => {
     const NTerm = g.append('text');
-    NTerm.attr('dx', SPINE_START_POS - 55)
+    // Anchored at its end so the gap to the bar is fixed at TERMINUS_LABEL_GAP
+    // no matter how wide the text renders. Anchoring at the start instead made
+    // the gap depend on the text width, which drifts in the SVG/PNG exports
+    // where the label renders narrower than it does on screen.
+    NTerm.attr('dx', SPINE_START_POS - TERMINUS_LABEL_GAP)
       .attr('dy', innerHeight / 2 + 20)
+      .attr('text-anchor', 'end')
       .text(() => 'NH2 --')
       .style('font-weight', 'bold');
   };
 
   const attachCTerminus = (g) => {
     const CTerm = g.append('text');
-    CTerm.attr('dx', SPINE_START_POS + SPINE_WIDTH + 5)
+    // Starts TERMINUS_LABEL_GAP past the bar; the default 'start' anchor already
+    // pins this end, so its gap is width-independent.
+    CTerm.attr('dx', SPINE_START_POS + SPINE_WIDTH + TERMINUS_LABEL_GAP)
       .attr('dy', innerHeight / 2 + 20)
+      .attr('text-anchor', 'start')
       .text(() => '-- COOH')
       .style('font-weight', 'bold');
   };

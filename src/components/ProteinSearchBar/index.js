@@ -38,28 +38,30 @@ function SearchBar(props) {
 
   return (
     <MuiThemeProvider>
-      <FormControl className="search-form">
-        <OutlinedInput
-          id="search-bar"
-          style={{ marginTop: '1.0rem' }}
-          placeholder="Ex. P04439"
-          onChange={handleChange}
-          onKeyUp={handleKeyUp}
-        />
-        <Typography className="search-form__label">
-          Protein Accession
-          <br />
-          Number
-        </Typography>
-      </FormControl>
-      <Button
-        type="submit"
-        variant="contained"
-        style={{ marginTop: '1.5rem', marginLeft: '0.3rem' }}
-        onClick={handleSubmit}
-      >
-        Search
-      </Button>
+      <div className="search-form-row">
+        <FormControl className="search-form">
+          <OutlinedInput
+            id="search-bar"
+            style={{ marginTop: '1.0rem' }}
+            placeholder="Ex. P04439"
+            onChange={handleChange}
+            onKeyUp={handleKeyUp}
+          />
+          <Typography className="search-form__label">
+            Protein Accession
+            <br />
+            Number
+          </Typography>
+        </FormControl>
+        <Button
+          className="search-form__button"
+          type="submit"
+          variant="contained"
+          onClick={handleSubmit}
+        >
+          Search
+        </Button>
+      </div>
     </MuiThemeProvider>
   );
 }
