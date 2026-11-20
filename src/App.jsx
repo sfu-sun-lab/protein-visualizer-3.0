@@ -408,9 +408,31 @@ function App() {
   };
 
   const captureScreenshot = () => {
-    let canvasPromise = html2canvas(ToCaptureRef.current, {
+    // Capture the whole app (header and accession search included), rendered
+    // as if scrolled to the top so fixed elements stay in place.
+    let canvasPromise = html2canvas(ToCaptureRef.current.closest('.App'), {
       useCORS: true, // in case you have images stored in your application
-      scrollX: -window.scrollX
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      // html2canvas drops the faint legend cards' opacity when capturing from
+      // .App, so in the copy it renders, replace that opacity with a white
+      // overlay that looks the same on the white page.
+      onclone: (clonedDoc) => {
+        clonedDoc
+          .querySelectorAll('[class*="legend--wrapper"]')
+          .forEach((card) => {
+            const opacity = parseFloat(
+              clonedDoc.defaultView.getComputedStyle(card).opacity
+            );
+            if (!(opacity < 1)) return;
+            card.style.opacity = '1';
+            const veil = clonedDoc.createElement('div');
+            veil.style.cssText = `position:absolute;top:0;left:0;right:0;bottom:0;z-index:10;background:rgba(255,255,255,${
+              1 - opacity
+            });`;
+            card.appendChild(veil);
+          });
+      }
     });
     canvasPromise.then((canvas) => {
       const image = canvas.toDataURL('image/jpeg', 1.0);
@@ -462,14 +484,71 @@ function App() {
     return style;
   };
 
-  const captureFullSVG = () => {
-    const htmlStr = document.getElementById('svg');
-    const style = createStyleElementFromCSS();
-    htmlStr.insertBefore(style, htmlStr.firstChild);
+  // Builds a standalone copy of the full-protein SVG for export:
+  // - viewBox/size come from getBBox() of the drawn content plus a margin, so
+  //   nothing is cropped on any edge (the drawing can extend outside #svg's
+  //   own box, which the page hides with overflow="visible");
+  // - each element's computed styles are inlined, so fonts, colors and stroke
+  //   widths render as on screen in any viewer (class rules and rem units from
+  //   the page stylesheets are not reliably applied outside the browser);
+  // - a white background rect is added, matching the page.
+  // `scale` multiplies the output width/height (used for a sharper PNG).
+  const EXPORT_MARGIN = 10;
+  const EXPORT_STYLE_PROPS = [
+    'fill',
+    'fill-opacity',
+    'stroke',
+    'stroke-width',
+    'stroke-opacity',
+    'opacity',
+    'font-family',
+    'font-size',
+    'font-weight',
+    'font-style'
+  ];
+  const buildFullSvgExport = (scale = 1) => {
+    const liveSvg = document.getElementById('svg');
+    const bbox = liveSvg.getBBox();
+    const x = Math.floor(bbox.x) - EXPORT_MARGIN;
+    const y = Math.floor(bbox.y) - EXPORT_MARGIN;
+    const width = Math.ceil(bbox.x + bbox.width) + EXPORT_MARGIN - x;
+    const height = Math.ceil(bbox.y + bbox.height) + EXPORT_MARGIN - y;
 
-    const data = new XMLSerializer().serializeToString(htmlStr);
+    const clone = liveSvg.cloneNode(true);
+    const liveEls = liveSvg.querySelectorAll('*');
+    const cloneEls = clone.querySelectorAll('*');
+    liveEls.forEach((el, i) => {
+      const computed = window.getComputedStyle(el);
+      EXPORT_STYLE_PROPS.forEach((prop) => {
+        cloneEls[i].style.setProperty(prop, computed.getPropertyValue(prop));
+      });
+    });
+
+    // Drop the on-page margin/background styling; the viewBox and background
+    // rect below replace it.
+    clone.removeAttribute('style');
+    clone.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
+    clone.setAttribute('width', `${width * scale}`);
+    clone.setAttribute('height', `${height * scale}`);
+
+    const background = document.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'rect'
+    );
+    background.setAttribute('x', `${x}`);
+    background.setAttribute('y', `${y}`);
+    background.setAttribute('width', `${width}`);
+    background.setAttribute('height', `${height}`);
+    background.setAttribute('fill', 'white');
+    clone.insertBefore(background, clone.firstChild);
+
+    return { svg: clone, width: width * scale, height: height * scale };
+  };
+
+  const captureFullSVG = () => {
+    const { svg } = buildFullSvgExport();
+    const data = new XMLSerializer().serializeToString(svg);
     const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-    style.remove();
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -483,13 +562,22 @@ function App() {
   };
 
   const captureWindowSVG = () => {
-    const htmlStr = document.getElementById('windowSvg');
+    const liveSvg = document.getElementById('windowSvg');
+    const htmlStr = liveSvg.cloneNode(true);
+    // Inline on-screen fonts on text (e.g. NH2/COOH inherit theirs from the
+    // page body, which a standalone SVG does not have).
+    const liveText = liveSvg.querySelectorAll('text, tspan');
+    htmlStr.querySelectorAll('text, tspan').forEach((el, i) => {
+      const computed = window.getComputedStyle(liveText[i]);
+      ['font-family', 'font-size', 'font-weight', 'font-style'].forEach(
+        (prop) => el.style.setProperty(prop, computed.getPropertyValue(prop))
+      );
+    });
     const style = createStyleElementFromCSS();
     htmlStr.insertBefore(style, htmlStr.firstChild);
 
     const data = new XMLSerializer().serializeToString(htmlStr);
     const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-    style.remove();
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -502,19 +590,14 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
+  const PNG_EXPORT_SCALE = 3;
   const captureFullImage = async () => {
-    const svg = document.getElementById('svg');
-    const bbox = svg.getBBox();
-
-    const style = createStyleElementFromCSS();
-    svg.insertBefore(style, svg.firstChild);
-
+    const { svg, width, height } = buildFullSvgExport(PNG_EXPORT_SCALE);
     const data = new XMLSerializer().serializeToString(svg);
-    style.remove();
 
     const canvas = document.createElement('canvas');
-    canvas.width = bbox.width;
-    canvas.height = bbox.height;
+    canvas.width = width;
+    canvas.height = height;
 
     const ctx = canvas.getContext('2d');
     const v = await Canvg.fromString(ctx, data);

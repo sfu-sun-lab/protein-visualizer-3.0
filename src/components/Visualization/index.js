@@ -91,6 +91,8 @@ function Visualization(props) {
 
   const svgRef = useRef(null);
   const windowSvgRef = useRef(null);
+  const svgWrapperRef = useRef(null);
+  const vizRootRef = useRef(null);
   const [windowPos, setWindowPos] = useState({ start: 0, end: proteinLength });
   const { start: windowStart, end: windowEnd } = windowPos;
   const [windowView, setWindowView] = useState(false);
@@ -1238,11 +1240,12 @@ function Visualization(props) {
       .style('font-weight', 'bold');
   };
 
-  const attachCTerminus = (g) => {
+  const attachCTerminus = (g, isWindowView) => {
     const CTerm = g.append('text');
+    const spineWidth = isWindowView ? WINDOW_SPINE_WIDTH : SPINE_WIDTH;
     // Starts TERMINUS_LABEL_GAP past the bar; the default 'start' anchor already
     // pins this end, so its gap is width-independent.
-    CTerm.attr('dx', SPINE_START_POS + SPINE_WIDTH + TERMINUS_LABEL_GAP)
+    CTerm.attr('dx', SPINE_START_POS + spineWidth + TERMINUS_LABEL_GAP)
       .attr('dy', innerHeight / 2 + 20)
       .attr('text-anchor', 'start')
       .text(() => '-- COOH')
@@ -1326,9 +1329,13 @@ function Visualization(props) {
         bandReach(aboveBandMap.get('phosphothreonine'))
       );
     }
-    if (!isWindowView) {
+    // The window view labels a terminus only when its range reaches that end
+    // of the protein (both, for the default full-length window).
+    if (!isWindowView || Number(windowStart) <= 1) {
       attachNTerminus(g);
-      attachCTerminus(g);
+    }
+    if (!isWindowView || Number(windowEnd) >= Number(proteinLength)) {
+      attachCTerminus(g, isWindowView);
     }
   };
 
@@ -1370,11 +1377,61 @@ function Visualization(props) {
     height
   ]);
 
+  // The legend cards are position: fixed (top: 112px) and their height depends
+  // on the protein, so the drawing can end up underneath them. Pad the SVG's
+  // container down until the top of the drawn content is at least 10px below
+  // the lower of the two cards. Measured in page coordinates (as at scroll 0),
+  // so the result does not depend on how far the page is scrolled.
+  const LEGEND_CLEARANCE = 12;
+  const updateLegendClearance = () => {
+    const wrapper = svgWrapperRef.current;
+    const svgEl = svgRef.current;
+    if (!wrapper || !svgEl || !vizRootRef.current || !svgEl.getBBox) return;
+    let legendBottom = -Infinity;
+    vizRootRef.current
+      .querySelectorAll('[class*="legend--wrapper"]')
+      .forEach((el) => {
+        legendBottom = Math.max(legendBottom, el.getBoundingClientRect().bottom);
+      });
+    let padding = 0;
+    if (legendBottom !== -Infinity) {
+      const currentPadding = parseFloat(wrapper.style.paddingTop) || 0;
+      const drawingTopWithoutPadding =
+        svgEl.getBoundingClientRect().top +
+        window.scrollY -
+        currentPadding +
+        svgEl.getBBox().y;
+      padding = Math.max(
+        0,
+        Math.ceil(legendBottom + LEGEND_CLEARANCE - drawingTopWithoutPadding)
+      );
+    }
+    wrapper.style.paddingTop = `${padding}px`;
+  };
+
+  // Runs after every render, after the drawing effect above has drawn.
+  useEffect(() => {
+    updateLegendClearance();
+  });
+
+  // The legend cards can change height without this component re-rendering
+  // (tab switches, chip selection, web fonts loading), so watch their size.
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined' || !vizRootRef.current) {
+      return undefined;
+    }
+    const observer = new ResizeObserver(() => updateLegendClearance());
+    vizRootRef.current
+      .querySelectorAll('[class*="legend--wrapper"]')
+      .forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [isLegendOpen, currSelection]);
+
   const svgWrapperClassName =
     scaleVisualization || fullScale ? 'svg-wrapper' : 'svg-wrapper--centered';
 
   const svg = Number.isInteger(currSelection) ? (
-    <div className={svgWrapperClassName}>
+    <div className={svgWrapperClassName} ref={svgWrapperRef}>
       <svg
         style={
           fullScale ? {} : { marginLeft: (scaleFactor - 1) * initialWidth }
@@ -1416,7 +1473,7 @@ function Visualization(props) {
   ) : null;
 
   return (
-    <div>
+    <div ref={vizRootRef}>
       {isLegendOpen ? (
         <Legend
           glycoslation={glycoslation}
